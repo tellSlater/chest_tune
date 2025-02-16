@@ -23,6 +23,7 @@
 
 
 volatile uint16_t duration = 0;
+//volatile uint16_t flag = 0;
 
 
 void setup_pins(){
@@ -77,7 +78,7 @@ void quarter_square(const uint16_t period_samples, const uint16_t duration_sampl
 
 
 int main() {
-	//_delay_ms(3000);
+	_delay_ms(5000);
 	setup_sleep();
 	setup_pins();
 	setup_int0();
@@ -107,6 +108,10 @@ int main() {
 			quarter_square(89, duration, PINB4);
 		}
 		else {
+			//flag = 1;
+			//while (flag < 3000) {
+			//	quarter_square(42, duration, PINB2);
+			//	flag++;}
 			sleep();
 		}
 	}
@@ -118,6 +123,7 @@ ISR(TIM0_OVF_vect) {
 }
 
 
-ISR(PCINT0_vect) {
+ISR(INT0_vect) {
+	//flag = 0;
 	duration = 0;
 }
