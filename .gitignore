@@ -1,0 +1,25 @@
+echo "*.o
+*.elf
+*.hex
+*.lss
+*.map
+*.eep
+*.srec
+*.lst
+*.bak
+*.d
+*.obj
+*.tmp
+*.dep
+debug/
+output/
+*.aps
+*.suo
+*.ncb
+*.sdf
+*.user
+*.rsuser
+*.psess
+*.pds
+*.pdsctx" > .gitignore
+Debug/
