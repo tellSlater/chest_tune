@@ -22,8 +22,8 @@
 #include <avr/sleep.h>
 
 
-volatile uint16_t duration = 0;
-//volatile uint16_t flag = 0;
+volatile uint16_t duration = 0xffff;
+volatile uint8_t darkness = 4;
 
 
 void setup_pins(){
@@ -42,28 +42,47 @@ void setup_sleep() {
 
 
 void setup_timer0() {
-	TCCR0B = (1 << CS00);   // Prescaler = 1 (Timer runs at full 9.6 MHz)
-	TIMSK0 = (1 << TOIE0);  // Enable Timer0 Overflow Interrupt
+	TCCR0B = (1 << CS00);     // Prescaler = 1 (Timer runs at full 9.6 MHz)
+	//TIMSK0 = (1 << TOIE0);  // Enable Timer0 Overflow Interrupt
 }
 
 
-void setup_int0() {
-    GIMSK |= (1 << INT0);    // Enable INT0 interrupt
+void setup_pcint() {
+	GIFR |= (1 << PCIF);     // Clear pci flag
+    GIMSK |= (1 << PCIE);    // Enable pc interrupt
+    PCMSK |= (1 << PCINT1);  // Enable PCINT1 (PB1)
+}
+
+
+void setup_watchdog() {
+	MCUSR |= 0x00;					                   //Watchdog settings
+	//WDTCR |= (1 << WDCE);				   //Enable changing watchdog settings (lasts 4 clock cycles)
+	//WDTCR &= ~(1 << WDE);
+	//WDTCR = (1 << WDTIE) | (1 << WDP0) | (1 << WDP3);  //Once every 8", interrupt only mode
+	
+    MCUSR &= ~(1 << WDRF);  // Clear watchdog reset flag (prevents unintended resets)
+
+    // Enable watchdog change sequence
+    WDTCR = (1 << WDCE) | (1 << WDE);
+    
+    // Set watchdog to **interrupt-only mode** (fires ISR every 8s, no reset)
+    WDTCR = (1 << WDTIE) | (1 << WDP3) | (1 << WDP0);
 }
 
 
 void sleep() {
 	TIMSK0 &= ~(1 << TOIE0);  // Disable Timer0 Overflow Interrupt
 	PORTB &= ~(1 << PINB0);   // Virtual ground off
-	GIMSK |= (1 << INT0);   // Enable INT0 interrupt
+	GIMSK |= (1 << INT0);     // Enable INT0 interrupt
+	PORTB &= ~(1 << PINB0);   // Disconnect virtual ground
 
-	sleep_mode();
+	while (duration) sleep_mode();
 	_delay_ms(800);
 
+	PORTB |= 1 << PINB0;    // Connect virtual ground
 	GIMSK &= ~(1 << INT0);  // Disable INT0 interrupt
 	PORTB |= 1 << PINB0;    // Virtual ground on
 	TIMSK0 = (1 << TOIE0);  // Enable Timer0 Overflow Interrupt
-	duration = 0;
 }
 
 
@@ -77,13 +96,28 @@ void quarter_square(const uint16_t period_samples, const uint16_t duration_sampl
 }
 
 
+void dbg(uint8_t x) {
+	PORTB &= ~(1 << PINB0);
+	_delay_ms(1000);
+	while (x) {
+		PORTB |= 1 << PINB0;
+		_delay_ms(200);
+		PORTB &= ~(1 << PINB0);
+		_delay_ms(200);
+		x--;
+	}
+	_delay_ms(1000);
+}
+
+
 int main() {
-	_delay_ms(5000);
+	cli();  // Disable interrupts golbaly
+	setup_watchdog();
 	setup_sleep();
 	setup_pins();
-	setup_int0();
+	setup_pcint();
 	setup_timer0();
-
+	dbg(5);
 	sei();  // Enable global interrupts
 
 	while (1) {
@@ -108,10 +142,6 @@ int main() {
 			quarter_square(89, duration, PINB4);
 		}
 		else {
-			//flag = 1;
-			//while (flag < 3000) {
-			//	quarter_square(42, duration, PINB2);
-			//	flag++;}
 			sleep();
 		}
 	}
@@ -123,7 +153,19 @@ ISR(TIM0_OVF_vect) {
 }
 
 
-ISR(INT0_vect) {
-	//flag = 0;
-	duration = 0;
+ISR(PCINT0_vect) {
+	dbg(2);
+	//PORTB ^= 1 << PINB0;
+	if (darkness >= 3) {
+		duration = 0;
+		darkness = 0;
+	}
+}
+
+
+ISR (WDT_vect) {  //Wake from sleep and check darkness once every 8sec
+	if (PINB & 1 << PINB1) {
+		if (darkness < 0xff) darkness++;
+	}
+	else darkness = 0;	
 }
