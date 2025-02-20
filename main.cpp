@@ -23,7 +23,7 @@
 
 
 volatile uint16_t duration = 0xffff;
-volatile uint8_t darkness = 4;
+volatile uint8_t darkness = 0;
 
 
 void setup_pins(){
@@ -55,32 +55,25 @@ void setup_pcint() {
 
 
 void setup_watchdog() {
-	MCUSR |= 0x00;					                   //Watchdog settings
-	//WDTCR |= (1 << WDCE);				   //Enable changing watchdog settings (lasts 4 clock cycles)
-	//WDTCR &= ~(1 << WDE);
-	//WDTCR = (1 << WDTIE) | (1 << WDP0) | (1 << WDP3);  //Once every 8", interrupt only mode
+	MCUSR |= 0x00;	
 	
-    MCUSR &= ~(1 << WDRF);  // Clear watchdog reset flag (prevents unintended resets)
-
-    // Enable watchdog change sequence
-    WDTCR = (1 << WDCE) | (1 << WDE);
-    
-    // Set watchdog to **interrupt-only mode** (fires ISR every 8s, no reset)
-    WDTCR = (1 << WDTIE) | (1 << WDP3) | (1 << WDP0);
+    MCUSR &= ~(1 << WDRF);                             // Clear watchdog reset flag (prevents unintended resets)
+    WDTCR = (1 << WDCE) | (1 << WDE);                  // Enable watchdog change sequence
+    WDTCR = (1 << WDTIE) | (1 << WDP3) | (1 << WDP0);  // Interrupt-only every 8s, no reset
 }
 
 
 void sleep() {
 	TIMSK0 &= ~(1 << TOIE0);  // Disable Timer0 Overflow Interrupt
 	PORTB &= ~(1 << PINB0);   // Virtual ground off
-	GIMSK |= (1 << INT0);     // Enable INT0 interrupt
+	GIMSK |= (1 << PCIE);     // Enable pin change interrupt
 	PORTB &= ~(1 << PINB0);   // Disconnect virtual ground
 
 	while (duration) sleep_mode();
 	_delay_ms(800);
 
 	PORTB |= 1 << PINB0;    // Connect virtual ground
-	GIMSK &= ~(1 << INT0);  // Disable INT0 interrupt
+	GIMSK &= ~(1 << PCIE);  // Disable pin change interrupt
 	PORTB |= 1 << PINB0;    // Virtual ground on
 	TIMSK0 = (1 << TOIE0);  // Enable Timer0 Overflow Interrupt
 }
@@ -154,12 +147,13 @@ ISR(TIM0_OVF_vect) {
 
 
 ISR(PCINT0_vect) {
-	dbg(2);
+	_delay_ms(20);
 	//PORTB ^= 1 << PINB0;
 	if (darkness >= 3) {
 		duration = 0;
 		darkness = 0;
 	}
+	GIFR |= (1 << PCIF);  // Clear the pin change interrupt flag
 }
 
 
@@ -167,5 +161,6 @@ ISR (WDT_vect) {  //Wake from sleep and check darkness once every 8sec
 	if (PINB & 1 << PINB1) {
 		if (darkness < 0xff) darkness++;
 	}
-	else darkness = 0;	
+	else darkness = 0;
 }
+

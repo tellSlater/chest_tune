@@ -22,4 +22,34 @@ output/
 *.psess
 *.pds
 *.pdsctx" > .gitignore
+
+# Microchip Studio project files
+*.atsln
+*.atmelproj
+*.cppproj
+*.cppproj.user
+*.componentinfo.xml
+
+# Build files and object files
+*.elf
+*.hex
+*.bin
+*.eep
+*.o
+*.d
+
+# Debugging files
+*.lss
+*.map
+*.sdf
+*.dep
+*.bak
+
+# Temporary files
+*.tmp
+*.log
+
+# Build folders
 Debug/
+Release/
+
