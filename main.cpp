@@ -23,20 +23,28 @@
 
 
 volatile uint16_t duration = 0xffff;
+
 volatile uint8_t note1_samples = 0;
 volatile uint8_t note2_samples = 0;
 volatile uint8_t note3_samples = 0;
-volatile uint8_t darkness = 6;
+
+const uint16_t note_duration = 6244;
+
 uint8_t note1 = 0;
 uint8_t note2 = 0;
 uint8_t note3 = 0;
+
 uint8_t pwm = 0;
+
+uint8_t trigger_once = 0;
+uint8_t stop = 0;
+
 
 void setup_pins(){
 	DDRB &= ~(1 << PINB2);				  // INPUT  - Interrupt sensing LDR for wakeup
-	PORTB |= (1 << PINB2);				  // Enable pull-up resistor on PB2
+	DDRB |= 1 << PINB4;                   // High side of LDR divider
+	DDRB |= 1 << PINB3;                   // Light effect
 	DDRB |= (1 << PINB0) | (1 << PINB1);  // Set PB0 (OCR0A) and PB1 (OCR0B) as outputs
-	DDRB |= 1 << PINB4;
 }
 
 
@@ -64,8 +72,8 @@ void setup_timer0_pwm() {
 
 
 void setup_pcint() {
-	GIFR |= (1 << PCIF);     // Clear pci flag
-    GIMSK |= (1 << PCIE);    // Enable pc interrupt
+	//GIFR |= (1 << PCIF);     // Clear pci flag
+    //GIMSK |= (1 << PCIE);    // Enable pc interrupt
     PCMSK |= (1 << PCINT2);  // Enable PCINT2 (PB2)
 }
 
@@ -79,32 +87,18 @@ void setup_watchdog() {
 }
 
 
-void dbg(uint8_t x) {
-	PORTB &= ~(1 << PINB4);
-	_delay_ms(1000);
-	while (x) {
-		PORTB |= 1 << PINB4;
-		_delay_ms(200);
-		PORTB &= ~(1 << PINB4);
-		_delay_ms(200);
-		x--;
-	}
-	_delay_ms(1000);
-}
-
-
 void sleep() {
-	TIMSK0 &= ~(1 << TOIE0);  // Disable Timer0 Overflow Interrupt
+	TIMSK0 &= ~(1 << TOIE0);                 // Disable Timer0 Overflow Interrupt
 	DDRB &= ~((1 << PINB0) | (1 << PINB1));  // Disable PWM
+	PORTB &= ~(1 << PINB3);                  // Turn off LED
 
-	//dbg(3);
+	while (stop) sleep_mode();
 	while (duration) sleep_mode();
-	//dbg(4);
-	_delay_ms(800);
-
-	DDRB |= (1 << PINB0) | (1 << PINB1);  // Set PB0 (OCR0A) and PB1 (OCR0B) as outputs
-	GIMSK &= ~(1 << PCIE);  // Disable pin change interrupt
-	TIMSK0 = (1 << TOIE0);  // Enable Timer0 Overflow Interrupt
+	
+	PORTB |= 1 << PINB3;     // Turn on LED
+	_delay_ms(1000);
+	DDRB |= (1 << PINB0) | (1 << PINB1);    // Set PB0 (OCR0A) and PB1 (OCR0B) as outputs
+	TIMSK0 = (1 << TOIE0);                  // Enable Timer0 Overflow Interrupt
 }
 
 
@@ -128,37 +122,46 @@ void output() {
 }
 
 
+void setup_behavior() {
+	PORTB |= 1 << PINB4;       // Enable sensor VCC
+	_delay_ms(1);
+	if (PINB & 1 << PINB2) trigger_once = 1;
+}
+
+
 int main() {
-	cli();  // Disable interrupts golbaly
+	cli();  // Disable interrupts 
 	setup_watchdog();
 	setup_sleep();
 	setup_pins();
 	setup_pcint();
 	setup_timer0_pwm();
-	//dbg(7);
-	sei();  // Enable global interrupts
-
+	setup_behavior();
+	
+	//_delay_ms(10000);
+	
+	sei();  // Enable interrupts
 
 	while (1) {		
-		if (duration < 6244){
+		if (duration < note_duration){
 			quarter_square(42, &note1_samples, &note1);
 			quarter_square(71, &note2_samples, &note2);
 			quarter_square(106, &note3_samples, &note3);
 			output();
 		}
-		else if (duration < 2*6244){
+		else if (duration < 2*note_duration){
 			quarter_square(40, &note1_samples, &note1);
 			quarter_square(67, &note2_samples, &note2);
 			quarter_square(100, &note3_samples, &note3);
 			output();
 		}
-		else if (duration < 3*6244){
+		else if (duration < 3*note_duration){
 			quarter_square(38, &note1_samples, &note1);
 			quarter_square(63, &note2_samples, &note2);
 			quarter_square(94, &note3_samples, &note3);
 			output();
 		}
-		else if (duration < (8*6244U)){
+		else if (duration < (8*note_duration)){
 			quarter_square(35, &note1_samples, &note1);
 			quarter_square(60, &note2_samples, &note2);
 			quarter_square(89, &note3_samples, &note3);
@@ -179,22 +182,25 @@ ISR(TIM0_OVF_vect) {  // Executes at 37500Hz when chip is not sleeping
 }
 
 
-ISR(PCINT0_vect) {         // Executes on light change
-	//dbg(6);
+ISR(PCINT0_vect) {           // Executes on light change
+	GIMSK &= ~(1 << PCIE);   // Disable pin change interrupt
+	PORTB &= ~(1 << PINB4);  // Disable sensor VCC
 	duration = 0;
-	darkness = 0;
+	if (trigger_once) stop = 1;
 }
 
 
-ISR (WDT_vect) {							     //Wake from sleep and check darkness once every 8sec
+ISR (WDT_vect) {               //Wake from sleep and check darkness once every 8sec
+	if (duration < (8*note_duration)) return;
+	PORTB |= 1 << PINB4;       // Enable sensor VCC
+	_delay_ms(1);
 	if (PINB & 1 << PINB2) {
-		//dbg(5);
-		if (darkness < 0xff) darkness++;
-		if (darkness >=0) GIMSK |= (1 << PCIE);  // Enable pin change interrupt
+		GIFR |= (1 << PCIF);    // Clear pci flag
+		GIMSK |= (1 << PCIE);   // Enable pin change interrupt
 	}
 	else {
-		darkness = 0;
-		GIMSK &= ~(1 << PCIE);                   // Disable pin change interrupt
-    }
+		GIMSK &= ~(1 << PCIE);   // Disable pin change interrupt
+		PORTB &= ~(1 << PINB4);  // Disable sensor VCC
+	}
 }
 
