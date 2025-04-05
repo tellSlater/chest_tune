@@ -23,19 +23,12 @@
 
 
 volatile uint16_t duration = 0xffff;
-
 volatile uint8_t note1_samples = 0;
-volatile uint8_t note2_samples = 0;
-volatile uint8_t note3_samples = 0;
 
-const uint16_t note_duration = 6244;
+const uint16_t note_duration = 5191;
 
 uint8_t note1 = 0;
-uint8_t note2 = 0;
-uint8_t note3 = 0;
-
 uint8_t pwm = 0;
-
 uint16_t dark_times = 0xffff;
 
 
@@ -114,7 +107,7 @@ void quarter_square(const uint16_t note_period_samples, volatile uint8_t* sample
 
 
 void output() {
-	pwm = note1 * 85 + note2 * 85 + note3 * 85;
+	pwm = note1 * 255;
 	OCR0A = pwm;
 	OCR0B = 255 - pwm;
 }
@@ -128,33 +121,41 @@ int main() {
 	setup_pcint();
 	setup_timer0_pwm();
 	
-	_delay_ms(30000);
+	_delay_ms(60000);
 	
 	sei();  // Enable interrupts
 
 	while (1) {		
 		if (duration < note_duration){
-			quarter_square(42, &note1_samples, &note1);
-			quarter_square(71, &note2_samples, &note2);
-			quarter_square(106, &note3_samples, &note3);
+			quarter_square(25, &note1_samples, &note1);
 			output();
 		}
 		else if (duration < 2*note_duration){
-			quarter_square(40, &note1_samples, &note1);
-			quarter_square(67, &note2_samples, &note2);
-			quarter_square(100, &note3_samples, &note3);
+			quarter_square(27, &note1_samples, &note1);
 			output();
 		}
 		else if (duration < 3*note_duration){
-			quarter_square(38, &note1_samples, &note1);
-			quarter_square(63, &note2_samples, &note2);
-			quarter_square(94, &note3_samples, &note3);
+			quarter_square(32, &note1_samples, &note1);
 			output();
 		}
+		else if (duration < (4*note_duration)){
+			quarter_square(38, &note1_samples, &note1);
+			output();	
+		}
+		else if (duration < (5*note_duration)){
+			quarter_square(48, &note1_samples, &note1);
+			output();	
+		}
+		else if (duration < (6*note_duration)){
+			quarter_square(30, &note1_samples, &note1);
+			output();	
+		}
+		else if (duration < (7*note_duration)){
+			quarter_square(24, &note1_samples, &note1);
+			output();	
+		}
 		else if (duration < (8*note_duration)){
-			quarter_square(35, &note1_samples, &note1);
-			quarter_square(60, &note2_samples, &note2);
-			quarter_square(89, &note3_samples, &note3);
+			quarter_square(19, &note1_samples, &note1);
 			output();	
 		}
 		else {
@@ -167,8 +168,6 @@ int main() {
 ISR(TIM0_OVF_vect) {  // Executes at 37500Hz when chip is not sleeping
 	duration++;
 	note1_samples++;
-	note2_samples++;
-	note3_samples++;
 }
 
 
@@ -191,8 +190,8 @@ ISR (WDT_vect) {               //Wake from sleep and check darkness once every 8
 		if (dark_times > 450) {
 			PORTB |= 1 << PINB4;       // Enable sensor VCC
 			_delay_ms(1);
-		GIFR |= (1 << PCIF);    // Clear pci flag
-		GIMSK |= (1 << PCIE);   // Enable pin change interrupt
+			GIFR |= (1 << PCIF);    // Clear pci flag
+			GIMSK |= (1 << PCIE);   // Enable pin change interrupt
 		}
 	}
 	else {
